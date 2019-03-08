@@ -1855,6 +1855,7 @@ SUBROUTINE FAST_InitOutput( p_FAST, y_FAST, InitOutData_ED, InitOutData_BD, Init
    INTEGER(IntKi)                   :: indxLast                                        ! The index of the last value to be written to an array
    INTEGER(IntKi)                   :: indxNext                                        ! The index of the next value to be written to an array
    INTEGER(IntKi)                   :: NumOuts                                         ! number of channels to be written to the output file(s)
+   REAL(ReKi)                       :: DT_OUT_VTK                                      ! Output rate for VTK animations
 
 
 
@@ -2139,6 +2140,7 @@ end do
    !......................................................
    ! Allocate data for binary output file
    !......................................................
+   y_FAST%NOutSteps = 1 
    IF (p_FAST%WrBinOutFile) THEN
 
          ! calculate the size of the array of outputs we need to store
@@ -2161,6 +2163,11 @@ end do
       y_FAST%n_Out = 0  !number of steps actually written to the file
 
    END IF
+   IF (p_FAST%n_VTKTime>0) THEN
+       ! VTK animation may required more OutSteps, so we take the max of required steps
+       DT_OUT_VTK = p_FAST%n_VTKTime * p_FAST%DT
+       y_FAST%NOutSteps = MAX ( y_FAST%NOutSteps, CEILING ( (p_FAST%TMax - p_FAST%TStart) / DT_OUT_VTK ) + 1 )
+   ENDIF
 
    y_FAST%VTK_count = 0  ! first VTK file has 0 as output
 
