@@ -237,13 +237,16 @@ subroutine NearWakeCorrection( Ct_azavg_filt, Vx_rel_disk_filt, p, m, Vx_wake, e
          m%a(j) =  0.5_ReKi - 0.5_ReKi*sqrt( 1.0_ReKi-Ct_azavg_filt(j))
       end if
       
-      if ( EqualRealNos(m%a(j),(1.0_ReKi / p%C_NearWake)) .or.  (m%a(j) > (1.0_ReKi / p%C_NearWake)) ) then
-         ! TEST: E6
-         call SetErrStat(ErrID_FATAL, 'Local induction is high enough to invalidate the near-wake correction, i.e., m%a(i) >= 1.0_ReKi / p%C_NearWake.', errStat, errMsg, RoutineName) 
-        
-         return
-      end if
-      
+      !if ( EqualRealNos(m%a(j),(1.0_ReKi / p%C_NearWake)) .or.  (m%a(j) > (1.0_ReKi / p%C_NearWake)) ) then
+      !   ! TEST: E6
+      !   call SetErrStat(ErrID_FATAL, 'Local induction is high enough to invalidate the near-wake correction, i.e., m%a(i) >= 1.0_ReKi / p%C_NearWake.', errStat, errMsg, RoutineName) 
+      !   return
+      !end if
+      ! Bounding inductions that is too-high
+      if ( m%a(j)>= 0.95*(1.0_ReKi / p%C_NearWake)) then
+         write(*,'(A,F8.2,A,F6.3,A,F6.3)')'>>> a too high r=',p%r(j),' a=',m%a(j),' Ct=',Ct_azavg_filt(j)
+         m%a(j) = 0.95*(1.0_ReKi / p%C_NearWake)
+      endif
       if (j > 0) then
          m%r_wake(j) = sqrt(m%r_wake(j-1)**2 + p%dr*( ((1.0_ReKi - m%a(j))*p%r(j)) / (1.0_ReKi-p%C_NearWake*m%a(j)) + ((1.0_ReKi - m%a(j-1))*p%r(j-1)) / (1.0_ReKi-p%C_NearWake*m%a(j-1)) ) )
       end if
