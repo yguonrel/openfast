@@ -335,7 +335,26 @@
 				<Tool Name="VFCustomBuildTool" CommandLine="CALL ..\RunRegistry.bat AeroDyn14" Description="Running Registry for AeroDyn14" Outputs="..\..\build\types-files\AeroDyn14_Types.f90"/></FileConfiguration></File></Filter>
 		<File RelativePath="..\..\modules\aerodyn14\src\AeroDyn14.f90"/>
 		<File RelativePath="..\..\modules\aerodyn14\src\AeroSubs.f90"/>
-		<File RelativePath="..\..\modules\aerodyn14\src\GenSubs.f90"/></Filter></Filter>
+		<File RelativePath="..\..\modules\aerodyn14\src\BiotSavart.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\Circulation.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\FVW_COMPUTE_WAKE.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\FVW_Setup.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\FVW_Types.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\FVWMods.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\FVWtest.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\GenSubs.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\MOD_FileManip.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\MOD_MathOps.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\MOD_MultTurb_Params.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\TransformCoords.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\Vinduced2OLD.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\Vinduced2PRIME.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\Vinduced3.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\VinducedBC.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\VinducedFW3.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\VinducedFWOLD.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\VinducedFWPRIME.f90"/>
+		<File RelativePath="..\..\modules\aerodyn14\src\VinducedNW.f90"/></Filter></Filter>
 		<Filter Name="BeamDyn">
 		<Filter Name="RegistryFiles">
 		<File RelativePath="..\..\build\types-files\BeamDyn_Types.f90"/>
