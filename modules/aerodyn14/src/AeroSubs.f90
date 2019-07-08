@@ -1623,7 +1623,7 @@ END SUBROUTINE READTwr
  ! ****************************************************
    SUBROUTINE ELEMFRC(P, m, ErrStat, ErrMess, &
                       PSI, RLOCAL, J, IBlade, VNROTOR2, VT, VNW, &
-                      VNB, DFN, DFT, PMA, Initial)
+                      VNB, DFN, DFT, PMA, Initial, u, ParmFVW, Loopnum, Time, VINDFW )
 !   SUBROUTINE ELEMFRC (PSI, RLOCAL, J, IBlade, VNROTOR2, VT, VNW, &
 !                       VNB, DFN, DFT, PMA, Initial)
  ! ****************************************************
@@ -1631,12 +1631,17 @@ END SUBROUTINE READTwr
  !  blade element.  Inputs include all velocities.
  !  Normal and tangential forces and 'A' are returned.
 !====================================================================================================
+
+   USE MultTurb_Params, Only: Turbines
+   USE InflowWind
    IMPLICIT                      NONE
       ! Passed Variables:
-   TYPE(AD14_ParameterType),       INTENT(IN)     :: p           ! Parameters
+   TYPE(AD14_ParameterType),       INTENT(INOUT)     :: p           ! Parameters KS--changed from IN to INOUT
    TYPE(AD14_MiscVarType),         INTENT(INOUT)  :: m           ! Misc/optimization variables
+   TYPE(AD14_InputType),           INTENT(IN   )  :: u           !KS-- changed from IN to INOUT
    INTEGER, INTENT(OUT)                   :: ErrStat
    CHARACTER(*), INTENT(OUT)              :: ErrMess
+   TYPE(FVW_ParameterType), INTENT( INOUT )  :: ParmFVW
 
    REAL(ReKi),INTENT(OUT)     :: DFN
    REAL(ReKi),INTENT(OUT)     :: DFT
@@ -1646,11 +1651,14 @@ END SUBROUTINE READTwr
    REAL(ReKi),INTENT(IN)      :: VNB
    REAL(ReKi),INTENT(IN)      :: VNROTOR2
    REAL(ReKi),INTENT(IN)      :: VNW
+   REAL(DbKi),INTENT(IN)      :: Time    !KS
    REAL(ReKi),INTENT(INOUT)   :: VT
    INTEGER, INTENT(IN)        :: J
    INTEGER, INTENT(IN)        :: IBlade
+   INTEGER, INTENT(IN)        :: LoopNum    !KS
    LOGICAL,   INTENT(IN)      :: Initial
 
+   LOGICAL                    :: FWAKE  !KS
    ! Local Variables:
 
    REAL(ReKi)                 :: CDA
@@ -1663,6 +1671,15 @@ END SUBROUTINE READTwr
    REAL(ReKi)                 :: SPHI
    REAL(ReKi)                 :: Vinduced
    REAL(ReKi)                 :: VN
+
+    REAL(ReKi)                 :: CLFW   !KS
+    REAL(ReKi)                 :: VINDFW(3)             !KS
+    REAL(ReKi)                 :: VN_IND                !KS
+    REAL(ReKi)                 :: VT_IND                !KS
+    REAL(ReKi)                 :: CPITCH                !KS
+    REAL(ReKi)                 :: SPITCH                !KS
+    REAL(ReKi)                 :: Pit_tmp               !KS
+    REAL(ReKi)                 :: tmpvector(3)  !KS
 
    INTEGER                                   :: ErrStatLcL        ! Error status returned by called routines.
    CHARACTER(ErrMsgLen)                      :: ErrMessLcl          ! Error message returned by called routines.
@@ -1693,7 +1710,13 @@ ELSE
  ! Turn wake off when using dynamic inflow and tip speed goes low.  Wake will remain off.
 
  ! Get induction factor = A using static airfoil coefficients
-   IF ( P%WAKE .AND. .NOT. Initial) THEN
+   IF (LoopNum .EQ. 2 ) THEN! KS
+      FWAKE=.TRUE. !KS
+   ELSE !KS
+      FWAKE=.FALSE. !KS
+   ENDIF  !KS
+
+   IF ( P%WAKE .AND. .NOT. Initial .AND. .NOT. FWAKE) THEN  !KS
 
       IF ( P%DYNINFL ) THEN
  !       USE dynamic inflow model to find A
@@ -1721,6 +1744,8 @@ ELSE
 
 ENDIF
 
+  IF ( .NOT. FWAKE) THEN !KS
+
 Vinduced = VNW  * m%Element%A(J,IBLADE)
 VN = VNW + VNB - Vinduced
 
@@ -1734,6 +1759,67 @@ m%Element%ALPHA(J,IBlade) = PHI - m%Element%PITNOW
 CALL MPI2PI ( m%Element%ALPHA(J,IBlade) )
 
 m%Element%W2(J,IBlade) = VN * VN + VT * VT
+  ELSE
+        ParmFVW%RotSpeed    = p%RotSpeed
+     IF ( ParmFVW%FVWInit ) THEN
+
+        IF (.NOT. ALLOCATED( ParmFVW%C )) THEN
+
+           ALLOCATE (ParmFVW%C( p%Element%NElm ), ParmFVW%RElm( p%Element%NElm ), ParmFVW%RNodes( p%Element%NElm ))
+
+           CALL InflowWind_Init( p%FVW_WindInit, ParmFVW%FVW_Wind%InputData, ParmFVW%FVW_Wind%ParamData, ParmFVW%FVW_Wind%ContData, ParmFVW%FVW_Wind%DiscData, ParmFVW%FVW_Wind%ConstrData, ParmFVW%FVW_Wind%OtherData, &
+                     ParmFVW%FVW_Wind%OutputData, ParmFVW%FVW_Wind%MiscData, p%IfW_DT, ParmFVW%FVW_Wind%InitOutputData, ErrStat, ErrMess )
+        END IF
+        
+        ParmFVW%TMax        = p%TMax
+
+        ParmFVW%RNodes      = p%RNodes
+        ParmFVW%Radius      = p%Blade%R
+
+        ParmFVW%C           = p%Blade%C
+        ParmFVW%NumBl       = p%NumBl
+        ParmFVW%DtAero      = p%DTAero
+        ParmFVW%NElm        = p%Element%NElm
+        ParmFVW%RElm        = p%Element%RElm
+
+        ParmFVW%HH          = p%Rotor%HH
+        ParmFVW%HubRad      = p%HubRad
+
+        ParmFVW%AirfoilParm = p%Airfoil
+        ParmFVW%AirfoilOut  = m%Airfoil
+
+        CALL InflowWind_CalcOutput( Time, ParmFVW%FVW_Wind%InputData, ParmFVW%FVW_Wind%ParamData, ParmFVW%FVW_Wind%ContData, &
+            & ParmFVW%FVW_Wind%DiscData, ParmFVW%FVW_Wind%ConstrData, ParmFVW%FVW_Wind%OtherData, ParmFVW%FVW_Wind%OutputData, ParmFVW%FVW_Wind%MiscData, &
+            & ErrStat, ErrMess )
+        ParmFVW%FVWInit = .FALSE.
+     END IF !Initial
+     CLFW = 0.d0
+     CALL FVWtest( J, IBlade, Initial, ParmFVW, m%Element%W2(J,IBlade), CLFW, VINDFW, Time) !KMK Added FVW call
+
+       Pit_tmp = 0.d0; SPitch = 0.d0; CPitch = 0.d0; tmpVector = 0.d0; VT_IND = 0.d0; VN_Ind = 0.d0
+       Pit_tmp    = -1.d0*ATAN2( -1.0_ReKi*DOT_PRODUCT( ParmFVW%FVWTurbineComponents%Blade(IBlade)%Orientation(1,:),    &
+            ParmFVW%FVWInputMarkers(IBlade)%Orientation(2,:,J)) , &
+            DOT_PRODUCT( ParmFVW%FVWTurbineComponents%Blade(IBlade)%Orientation(1,:),    &
+            ParmFVW%FVWInputMarkers(IBlade)%Orientation(1,:,J)))
+       SPitch    = SIN( Pit_tmp  )
+       CPitch    = COS( Pit_tmp  )
+       tmpVector = -1.d0*SPitch*ParmFVW%FVWInputMarkers(IBlade)%Orientation(1,:,J) + CPitch*ParmFVW%FVWInputMarkers(IBlade)%Orientation(2,:,J)
+       VT_IND   =     DOT_PRODUCT( tmpVector, VINDFW)
+       tmpVector = 0.d0
+       tmpVector =     CPitch*ParmFVW%FVWInputMarkers(IBlade)%Orientation(1,:,J) + SPitch*ParmFVW%FVWInputMarkers(IBlade)%Orientation(2,:,J)
+       VN_IND    =     DOT_PRODUCT( tmpVector, VINDFW )
+
+       VN=VNW +VNB + VN_IND     !KS -- above, it's -Vinduced; why is it (+) here?; 10.13.15 -- I do think the (+) is correct; it's a derivation thing. 
+       VT=VT + VT_IND
+       PHI   = ATAN2( VN, VT ) !KS
+
+       m%Element%ALPHA(J,IBlade) = PHI - m%Element%PITNOW !KS
+       CALL MPI2PI ( m%Element%ALPHA(J,IBlade) ) !KS
+       m%Element%W2(J,IBlade) = VN * VN + VT * VT        !KS -- !This is calculated in FVW code and then reassigned
+                                                                                ! here without ever being used...why?? Same with
+                                                                                ! ALPHA_TMP (which is just never used) and CLFW
+  END IF
+
 
  ! Get the Reynold's number for the element
  !  Returns Reynold's number x 10^6    !bjj: Reynold's number x 10^-6 ?

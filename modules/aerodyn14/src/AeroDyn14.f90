@@ -52,14 +52,14 @@ SUBROUTINE AD14_Init( InitInp, u, p, x, xd, z, O, y, m, Interval, InitOut, ErrSt
 
    TYPE(AD14_InitInputType),       INTENT(INOUT)  :: InitInp     ! Input data for initialization routine
    TYPE(AD14_InputType),           INTENT(  OUT)  :: u           ! An initial guess for the input; input mesh must be defined
-   TYPE(AD14_ParameterType),       INTENT(  OUT)  :: p           ! Parameters
+   TYPE(AD14_ParameterType),       INTENT(INOUT)  :: p           ! Parameters !KS -- changed from OUT to INOUT
    TYPE(AD14_ContinuousStateType), INTENT(  OUT)  :: x           ! Initial continuous states
    TYPE(AD14_DiscreteStateType),   INTENT(  OUT)  :: xd          ! Initial discrete states
    TYPE(AD14_ConstraintStateType), INTENT(  OUT)  :: z           ! Initial guess of the constraint states
    TYPE(AD14_OtherStateType),      INTENT(  OUT)  :: O           ! Initial other states
    TYPE(AD14_OutputType),          INTENT(  OUT)  :: y           ! Initial system outputs (outputs are not calculated;
                                                                  !   only the output mesh is initialized)
-   TYPE(AD14_MiscVarType),         INTENT(  OUT)  :: m           ! Misc/optimization variables
+   TYPE(AD14_MiscVarType),         INTENT(INOUT)  :: m           ! Misc/optimization variables  !KS -- changed from OUT to INOUT
    REAL(DbKi),                     INTENT(INOUT)  :: Interval    ! Coupling interval in seconds: the rate that
                                                                  !   (1) AD14_UpdateStates() is called in loose coupling &
                                                                  !   (2) AD14_UpdateDiscState() is called in tight coupling.
@@ -118,6 +118,7 @@ SUBROUTINE AD14_Init( InitInp, u, p, x, xd, z, O, y, m, Interval, InitOut, ErrSt
    p%Blade%BladeLength = InitInp%TurbineComponents%BladeLength
    p%DtAero            = Interval            ! set the default DT here; may be overwritten later, when we read the input file in AD14_GetInput()
    p%UseDWM            = InitInp%UseDWM
+   p%UseFVW            = InitInp%UseFVW   !!KS
 
          ! Define parameters here:
 
@@ -734,10 +735,12 @@ SUBROUTINE AD14_CalcOutput( Time, u, p, x, xd, z, O, y, m, ErrStat, ErrMess )
       USE               AeroGenSubs,   ONLY: ElemOut
       USE               DWM_Types
       USE               DWM
+      USE               FVW_vars,      ONLY: VINDFVW   !KS
+      USE InflowWind !! KS
 
       REAL(DbKi),                     INTENT(IN   )  :: Time        ! Current simulation time in seconds
-      TYPE(AD14_InputType),           INTENT(IN   )  :: u           ! Inputs at Time
-      TYPE(AD14_ParameterType),       INTENT(IN   )  :: p           ! Parameters
+      TYPE(AD14_InputType),           INTENT(INOUT)  :: u           ! Inputs at Time !KS changed from IN to INOUT
+      TYPE(AD14_ParameterType),       INTENT(INOUT)  :: p           ! Parameters !KS changed from IN to INOUT
       TYPE(AD14_ContinuousStateType), INTENT(IN   )  :: x           ! Continuous states at Time
       TYPE(AD14_DiscreteStateType),   INTENT(IN   )  :: xd          ! Discrete states at Time
       TYPE(AD14_ConstraintStateType), INTENT(IN   )  :: z           ! Constraint states at Time
@@ -750,6 +753,7 @@ SUBROUTINE AD14_CalcOutput( Time, u, p, x, xd, z, O, y, m, ErrStat, ErrMess )
 
 
       ! Local variables
+   TYPE(FVW_ParameterType)    :: p_FVW
    REAL(DbKi), PARAMETER      :: OnePlusEpsilon = 1 + EPSILON(Time)
 
    REAL(ReKi)                 :: VNElement
@@ -782,7 +786,10 @@ SUBROUTINE AD14_CalcOutput( Time, u, p, x, xd, z, O, y, m, ErrStat, ErrMess )
    INTEGER                    :: I
    CHARACTER(ErrMsgLen)       :: ErrMessLcl          ! Error message returned by called routines.
 
+   INTEGER                    :: LoopNum, ierr!KS
+   CHARACTER(*), PARAMETER                   :: RoutineName = 'AD14_AeroSubs' !KS Not sure why I added this
 
+    REAL(ReKi)                 :: VIND_FVW(3)   !KS
 
    ! Initialize ErrStat
       ErrStat = ErrID_None
@@ -795,6 +802,7 @@ SUBROUTINE AD14_CalcOutput( Time, u, p, x, xd, z, O, y, m, ErrStat, ErrMess )
       ! NOTE: Time is scaled by OnePlusEps to ensure that loads are calculated at every
    !       time step when DTAero = DT, even in the presence of numerical precision errors.
 
+   p_FVW%Time = Time   ! KS
    IF ( m%NoLoadsCalculated .OR. ( Time*OnePlusEpsilon - m%OldTime ) >= p%DTAERO )  THEN
          ! It's time to update the aero forces
 
@@ -913,6 +921,8 @@ SUBROUTINE AD14_CalcOutput( Time, u, p, x, xd, z, O, y, m, ErrStat, ErrMess )
    ! end of NewTime routine
    !.................................................................................................
 
+   LoopNum = 1 !KS
+DO LoopNum = 1, 2 !KS   MOVE OVER AFTER DONE ADDING LINES
    Node = 0
    DO IBlade = 1,p%NumBl
 
@@ -1049,14 +1059,29 @@ SUBROUTINE AD14_CalcOutput( Time, u, p, x, xd, z, O, y, m, ErrStat, ErrMess )
          !-------------------------------------------------------------------------------------------
          ! Get blade element forces and induced velocity
          !-------------------------------------------------------------------------------------------
+         IF (p%UseFVW ) THEN! .AND. p_FVW%FVWInit) THEN
+            CALL AD14_CopyAeroConfig( u%TurbineComponents, p_FVW%FVWTurbineComponents, MESH_NEWCOPY, ErrStatLcl, ErrMessLcl )
+            CALL SetErrStat ( ErrStatLcl, ErrMessLcl, ErrStat,ErrMess,RoutineName )
+            IF (ErrStat >= AbortErrLev) RETURN
+            p_FVW%FVWTurbineComponents = u%TurbineComponents
+   !..........
+   ! u%InputMarkers (blade meshes):
+   !..........
+            IF (.NOT. ALLOCATED( p_FVW%FVWInputMarkers )) ALLOCATE (p_FVW%FVWInputMarkers(p%NumBl) )
+            p_FVW%FVWInputMarkers = u%InputMarkers
+         END IF
+
          CALL ELEMFRC( p, m, ErrStatLcl, ErrMessLcl,                             &
                        AzimuthAngle, rLocal, IElement, IBlade, VelNormalToRotor2, VTTotal, VNWind, &
-                       VNElement, DFN, DFT, PMA, m%NoLoadsCalculated )
+                     VNElement, DFN, DFT, PMA, m%NoLoadsCalculated, u, p_FVW, LoopNum, Time, VIND_FVW )
             CALL SetErrStat ( ErrStatLcl, ErrMessLcl, ErrStat,ErrMess,'AD14_CalcOutput' )
             IF (ErrStat >= AbortErrLev) THEN
                CALL CleanUp()
                RETURN
             END IF
+         IF ( p%UseFVW ) THEN
+            VelocityVec = VelocityVec+VIND_FVW
+         END IF
             
          !-------------------------------------------------------------------------------------------
          ! Set up dynamic inflow parameters
@@ -1110,6 +1135,7 @@ SUBROUTINE AD14_CalcOutput( Time, u, p, x, xd, z, O, y, m, ErrStat, ErrMess )
 
 
    END DO !IBlade
+  END DO  !KS -- end of LoopNum loop
 
    m%NoLoadsCalculated = .FALSE.
 

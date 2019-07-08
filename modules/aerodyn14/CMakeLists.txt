@@ -20,9 +20,29 @@ generate_f90_types(src/Registry-DWM.txt DWM_Types.f90)
 set(AD14_LIBS_SOURCES
   src/AeroDyn14.f90
   src/AeroSubs.f90
+  src/MOD_MultTurb_Params.f90
+  src/MOD_FileManip.f90
   src/DWM.f90
   src/DWM_Wake_Sub_ver2.f90
   src/GenSubs.f90
+  src/BiotSavart.f90
+  src/Circulation.f90
+  src/FVW_COMPUTE_WAKE.f90
+  src/FVWMods.f90
+  src/FVW_Setup.f90
+  src/FVWtest.f90
+  #src/FVW_Types.f90
+  src/MOD_MathOps.f90
+  src/TransformCoords.f90
+  src/Vinduced2OLD.f90
+  src/Vinduced2PRIME.f90
+  src/Vinduced3.f90
+  src/VinducedBC.f90
+  src/VinducedFW3.f90
+  src/VinducedFWOLD.f90
+  src/VinducedFWPRIME.f90
+  src/VinducedNW.f90
+
 
   # Generated files
   AeroDyn14_Types.f90

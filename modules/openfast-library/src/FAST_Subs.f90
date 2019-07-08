@@ -454,6 +454,12 @@ SUBROUTINE FAST_InitializeAll( t_initial, p_FAST, y_FAST, m_FAST, ED, BD, SrvD, 
                      AD14%OtherSt(STATE_CURR), AD14%y, AD14%m, p_FAST%dt_module( MODULE_AD14 ), InitOutData_AD14, ErrStat2, ErrMsg2 )
          CALL SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,RoutineName)
 
+      AD14%p%TMax = p_FAST%TMax           !KS  !Have to set AFTER AD14_Init
+
+      ALLOCATE( AD14%p%RNodes( ED%p%BldNodes )) 
+      AD14%p%RotSpeed = ED%p%RotSpeed   !KS
+      AD14%p%RNodes   = ED%p%RNodes     !KS
+
       p_FAST%ModuleInitialized(Module_AD14) = .TRUE.            
       CALL SetModuleSubstepTime(Module_AD14, p_FAST, y_FAST, ErrStat2, ErrMsg2)
          CALL SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,RoutineName)
@@ -585,6 +591,19 @@ SUBROUTINE FAST_InitializeAll( t_initial, p_FAST, y_FAST, m_FAST, ED, BD, SrvD, 
       CALL InflowWind_Init( InitInData_IfW, IfW%Input(1), IfW%p, IfW%x(STATE_CURR), IfW%xd(STATE_CURR), IfW%z(STATE_CURR),  &
                      IfW%OtherSt(STATE_CURR), IfW%y, IfW%m, p_FAST%dt_module( MODULE_IfW ), InitOutData_IfW, ErrStat2, ErrMsg2 )
          CALL SetErrStat(ErrStat2,ErrMsg2,ErrStat,ErrMsg,RoutineName)
+
+   IF ( p_FAST%CompAero == Module_AD14 ) THEN  !!KS -- added this section
+      CALL InflowWind_Init( AD14%p%FVW_Params%FVW_Wind%InitInputData,AD14%p%FVW_Params%FVW_Wind%InputData,&
+                                & AD14%p%FVW_Params%FVW_Wind%ParamData,AD14%p%FVW_Params%FVW_Wind%ContData,&
+                                & AD14%p%FVW_Params%FVW_Wind%DiscData,AD14%p%FVW_Params%FVW_Wind%ConstrData,&
+                                & AD14%p%FVW_Params%FVW_Wind%OtherData, AD14%p%FVW_Params%FVW_Wind%OutputData,&
+                                & AD14%p%FVW_Params%FVW_Wind%MiscData,p_FAST%dt_module(MODULE_IfW ),&
+                                & AD14%p%FVW_Params%FVW_Wind%InitOutputData, ErrStat2, ErrMsg2 )
+
+    AD14%p%FVW_WindInit = InitInData_IfW
+    AD14%p%IfW_DT = p_FAST%dt_module( MODULE_IfW )
+    AD14%p%FVW_Params%FVWInit = .TRUE.
+   END IF
 
       p_FAST%ModuleInitialized(Module_IfW) = .TRUE.            
       CALL SetModuleSubstepTime(Module_IfW, p_FAST, y_FAST, ErrStat2, ErrMsg2)
@@ -3456,9 +3475,11 @@ SUBROUTINE SetModuleSubstepTime(ModuleID, p_FAST, y_FAST, ErrStat, ErrMsg)
    ELSE
       IF ( p_FAST%dt_module( ModuleID ) > p_FAST%dt ) THEN
          ErrStat = ErrID_Fatal
-         ErrMsg = "The "//TRIM(y_FAST%Module_Ver(ModuleID)%Name)//" module time step ("//&
-                          TRIM(Num2LStr(p_FAST%dt_module( ModuleID )))// &
-                    " s) cannot be larger than FAST time step ("//TRIM(Num2LStr(p_FAST%dt))//" s)."
+         !!KS -- in my code I commended the next 3 lines out 
+         !ErrMsg = "The "//TRIM(y_FAST%Module_Ver(ModuleID)%Name)//" module time step ("//&
+         !                 TRIM(Num2LStr(p_FAST%dt_module( ModuleID )))// &
+         !           " s) cannot be larger than FAST time step ("//TRIM(Num2LStr(p_FAST%dt))//" s)."
+         p_FAST%n_substeps(ModuleID) = 0 !KS -- and added this line
       ELSE
             ! calculate the number of subcycles:
          p_FAST%n_substeps(ModuleID) = NINT( p_FAST%dt / p_FAST%dt_module( ModuleID ) )

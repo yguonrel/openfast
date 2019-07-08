@@ -209,6 +209,41 @@ typedef	^	ElOutParms	IntKi	ElPrList	{:}	-	-		-
 typedef	^	ElOutParms	IntKi	ElPrNum	{:}	-	-		-
 typedef	^	ElOutParms	IntKi	NumElOut	-	-	-	"Number of Blade Elements"
 
+#FVW_WindTypes
+typedef ^       FVW_WindType      InflowWind_InputType   InputData        -       -       -       -
+typedef ^       FVW_WindType      InflowWind_ParameterType   ParamData        -       -       -       -
+typedef ^       FVW_WindType      InflowWind_ContinuousStateType   ContData        -       -       -       -
+typedef ^       FVW_WindType      InflowWind_DiscreteStateType   DiscData        -       -       -       -
+typedef ^       FVW_WindType      InflowWind_ConstraintStateType   ConstrData        -       -       -       -
+typedef ^       FVW_WindType      InflowWind_OtherStateType   OtherData        -       -       -       -
+typedef ^       FVW_WindType      InflowWind_OutputType   OutputData        -       -       -       -
+typedef ^       FVW_WindType      InflowWind_InitInputType   InitInputData        -       -       -       -
+typedef ^       FVW_WindType      InflowWind_InitOutputType   InitOutputData        -       -       -       -
+typedef ^       FVW_WindType      InflowWind_MiscVarType   MiscData        -       -       -       -
+
+#FVW_ParameterType
+typedef ^       FVW_ParameterType      Logical   FVWInit        - .TRUE.  -       -       -
+typedef ^       FVW_ParameterType      ReKi   DtAero        -       -       -       -
+typedef ^       FVW_ParameterType      IntKi   NELM        -       -       -       -
+typedef ^       FVW_ParameterType      ReKi   RELM        {:}       -       -       -
+typedef ^       FVW_ParameterType      ReKi   RNodes        {:}       -       -       -
+typedef ^       FVW_ParameterType      IntKi   NumBl        -       -       -       -
+typedef ^       FVW_ParameterType      ReKi   Radius        -       -       -       -
+typedef ^       FVW_ParameterType      ReKi   C        {:}       -       -       -
+typedef ^       FVW_ParameterType      ReKi   HH        -       -       -       -
+typedef ^       FVW_ParameterType      ReKi   HubRad        -       -       -       -
+typedef ^       FVW_ParameterType      ReKi   Time        -       -       -       -
+typedef ^       FVW_ParameterType      AirfoilParms   AirfoilParm        -       -       -       -
+typedef ^       FVW_ParameterType      Airfoil   AirfoilOut        -       -       -       -
+typedef ^       FVW_ParameterType      ReKi   CDD        {:}       -       -       -
+typedef ^       FVW_ParameterType      ReKi   CLL        {:}       -       -       -
+typedef ^       FVW_ParameterType      ReKi   CMM        {:}       -       -       -
+typedef ^       FVW_ParameterType      ReKi   TMax        -       -       -       -
+typedef ^       FVW_ParameterType      ReKi   RotSpeed        -       -       -       -
+typedef ^       FVW_ParameterType      MeshType   FVWInputMarkers        {:}       -       -       -
+typedef ^       FVW_ParameterType      AeroConfig   FVWTurbineComponents        -       -       -       -
+typedef ^       FVW_ParameterType      FVW_WindType   FVW_Wind        -       -       -       -
+
 #InducedVel
 typedef	^	InducedVel	ReKi	SumInFl	-	0	-
 typedef	^	InducedVelParms	ReKi	AToler	-	-	-	"Convergence tolerance for induction factor"	-
@@ -286,6 +321,7 @@ typedef	^	InitInputType	ReKi	BladeLength	-	-	-	"Blade Length"
 #typedef	^	InitInputType	OrientationType	InitBladeOrient	{:}{:}	-	-	"Positions of the blades, initially, from FAST"
 typedef	^	InitInputType	LOGICAL	LinearizeFlag
 typedef	^	InitInputType	LOGICAL	UseDWM	-	.FALSE.	-	"flag to determine if DWM module should be used"	-
+typedef ^       InitInputType   LOGICAL UseFVW  -       .TRUE. -       "flag to determine if FVW module should be used"        -
 typedef	^	InitInputType	AeroConfig	TurbineComponents	-	-	-		-
 typedef	^	InitInputType	INTEGER	NumTwrNodes	-	-	-	"Number of ElastoDyn tower nodes.  Tower drag will be computed at those points."
 typedef	^	InitInputType	ReKi	TwrNodeLocs	{:}{:}	-	-	"Location of ElastoDyn tower nodes with respect to the inertial origin."	-
@@ -362,6 +398,7 @@ typedef	^	ParameterType	LOGICAL	MultiTab	-
 typedef	^	ParameterType	LOGICAL	LinearizeFlag
 typedef	^	ParameterType	LOGICAL	OutputPlottingInfo	-	.FALSE.
 typedef	^	ParameterType	LOGICAL	UseDWM	-	.FALSE.	-	"flag to determine if DWM module should be used"	-
+typedef ^       ParameterType   LOGICAL UseFVW  -       .TRUE. -       "flag to determine if FVW module should be used"        -
 typedef	^	ParameterType	ReKi	TwoPiNB	-	-	-	"2*pi/num of blades"	-
 typedef	^	ParameterType	INTEGER	NumBl	-	-	-	"Number of Blades"
 typedef	^	ParameterType	INTEGER	NBlInpSt	-	-	-	"Number of Blade Input Stations"
@@ -391,6 +428,12 @@ typedef	^	ParameterType	InducedVelParms	InducedVel
 typedef	^	ParameterType	WindParms	Wind
 typedef	^	ParameterType	RotorParms	Rotor
 typedef	^	ParameterType	DWM_ParameterType	DWM	-	-	-		-
+typedef ^       ParameterType   ReKi    	TMax   -       -       -       "Time"
+typedef ^       ParameterType   ReKi    	RNodes   {:}       -       -       "RNodes"
+typedef ^       ParameterType   ReKi    	RotSpeed   -       -       -       "RotSpeed"
+typedef ^       ParameterType   InflowWind_InitInputType       FVW_WindInit     -       -       -               -
+typedef ^       ParameterType   DbKi       IfW_DT     -       -       -               -
+typedef ^       ParameterType   FVW_ParameterType       FVW_Params     -       -       -               -
 
 # ..... Inputs ....................................................................................................................
 # Define inputs that are contained on the mesh here:
