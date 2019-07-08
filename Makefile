@@ -21,7 +21,7 @@ else
 	RMDIR=rm -rf
 endif
 BUILD_DIR=build$(suffix)
-TEST_DIR= ../FVWoW/test
+TEST_DIR=../FVWoW/test
 
 
 
