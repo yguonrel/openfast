@@ -122,9 +122,9 @@ subroutine AD_SetInitOut(p, InputFileData, InitOut, errStat, errMsg)
          InitOut%WriteOutputHdr( m + 4 ) = trim(chanPrefix)//"Vy"
          InitOut%WriteOutputUnt( m + 4 ) = '  (m/s)  '
          InitOut%WriteOutputHdr( m + 5 ) = ' '//trim(chanPrefix)//"AIn"
-         InitOut%WriteOutputUnt( m + 5 ) = '  (deg)  '
+         InitOut%WriteOutputUnt( m + 5 ) = '  (-)  '
          InitOut%WriteOutputHdr( m + 6 ) = ' '//trim(chanPrefix)//"ApIn"
-         InitOut%WriteOutputUnt( m + 6 ) = '  (deg)  '
+         InitOut%WriteOutputUnt( m + 6 ) = '  (-)  '
          InitOut%WriteOutputHdr( m + 7 ) = trim(chanPrefix)//"Vrel"
          InitOut%WriteOutputUnt( m + 7 ) = '  (m/s)  '
          InitOut%WriteOutputHdr( m + 8 ) = ' '//trim(chanPrefix)//"Phi"
@@ -1495,8 +1495,7 @@ subroutine SetInputsForAA(p, u, m, errStat, errMsg)
    do j=1,p%NumBlades
       do i = 1,p%NumBlNds
          ! Get local orientation matrix to transform from blade element coordinates to global coordinates
-         !m%AA_u%RotLtoG(:,:,i,j) = m%WithoutSweepPitchTwist(:,:,i,j) 
-         m%AA_u%RotLtoG(:,:,i,j) = u%BladeMotion(j)%Orientation(:,:,i)
+         m%AA_u%RotGtoL(:,:,i,j) = u%BladeMotion(j)%Orientation(:,:,i)
 
          ! Get blade element aerodynamic center in global coordinates
          m%AA_u%AeroCent_G(:,i,j) = u%BladeMotion(j)%Position(:,i) + u%BladeMotion(j)%TranslationDisp(:,i)
