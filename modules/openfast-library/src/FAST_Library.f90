@@ -21,7 +21,7 @@ MODULE FAST_Data
    REAL(DbKi),     PARAMETER             :: t_initial = 0.0_DbKi     ! Initial time
    INTEGER(IntKi)                        :: NumTurbines 
    INTEGER,        PARAMETER             :: IntfStrLen  = 1025       ! length of strings through the C interface
-   INTEGER(IntKi), PARAMETER             :: MAXOUTPUTS = 1000        ! Maximum number of outputs
+   INTEGER(IntKi), PARAMETER             :: MAXOUTPUTS = 4000        ! Maximum number of outputs
    INTEGER(IntKi), PARAMETER             :: MAXInitINPUTS = 10       ! Maximum number of initialization values from Simulink
    INTEGER(IntKi), PARAMETER             :: NumFixedInputs = 8
    
@@ -41,7 +41,7 @@ subroutine FAST_AllocateTurbines(nTurbines, ErrStat_c, ErrMsg_c) BIND (C, NAME='
 !GCC$ ATTRIBUTES DLLEXPORT :: FAST_AllocateTurbines
 #endif
    INTEGER(C_INT),         INTENT(IN   ) :: nTurbines
-   INTEGER(C_INT),         INTENT(  OUT) :: ErrStat_c      
+   INTEGER(C_INT),         INTENT(  OUT) :: ErrStat_c
    CHARACTER(KIND=C_CHAR), INTENT(  OUT) :: ErrMsg_c(IntfStrLen) 
    
    if (nTurbines .gt. 0) then
@@ -53,9 +53,35 @@ subroutine FAST_AllocateTurbines(nTurbines, ErrStat_c, ErrMsg_c) BIND (C, NAME='
       call wrscr1('Proceeding anyway')
    end if
 
-   allocate(Turbine(0:NumTurbines-1)) !Allocate in C style because most of the other Turbine properties from the input file are in C style inside the C++ driver
+   allocate(Turbine(0:NumTurbines-1),Stat=ErrStat) !Allocate in C style because most of the other Turbine properties from the input file are in C style inside the C++ driver
 
+   if (ErrStat /= 0) then
+      ErrStat_c = ErrID_Fatal
+      ErrMsg    = "Error allocating turbine data."//C_NULL_CHAR
+   else
+      ErrStat_c = ErrID_None
+      ErrMsg = " "//C_NULL_CHAR
+   end if
+   ErrMsg_c  = TRANSFER( ErrMsg//C_NULL_CHAR, ErrMsg_c )
+   
 end subroutine FAST_AllocateTurbines
+
+subroutine FAST_DeallocateTurbines(ErrStat_c, ErrMsg_c) BIND (C, NAME='FAST_DeallocateTurbines')
+   IMPLICIT NONE
+#ifndef IMPLICIT_DLLEXPORT
+!DEC$ ATTRIBUTES DLLEXPORT :: FAST_DeallocateTurbines
+!GCC$ ATTRIBUTES DLLEXPORT :: FAST_DeallocateTurbines
+#endif
+   INTEGER(C_INT),         INTENT(  OUT) :: ErrStat_c
+   CHARACTER(KIND=C_CHAR), INTENT(  OUT) :: ErrMsg_c(IntfStrLen)
+
+   if (Allocated(Turbine)) then
+      deallocate(Turbine)
+   end if
+
+   ErrStat_c = ErrID_None
+   ErrMsg_c = C_NULL_CHAR
+end subroutine
 
 subroutine FAST_Sizes(iTurb, TMax, InitInpAry, InputFileName_c, AbortErrLev_c, NumOuts_c, dt_c, ErrStat_c, ErrMsg_c, ChannelNames_c) BIND (C, NAME='FAST_Sizes')
    IMPLICIT NONE 
@@ -93,7 +119,10 @@ subroutine FAST_Sizes(iTurb, TMax, InitInpAry, InputFileName_c, AbortErrLev_c, N
    ExternInitData%NumCtrl2SC = 0
    ExternInitData%NumSC2Ctrl = 0
    ExternInitData%SensorType = NINT(InitInpAry(1))   
-   
+   ! -- MATLAB Integration --
+   ! Make sure fast farm integration is false
+   ExternInitData%FarmIntegration = .false.
+
    IF ( NINT(InitInpAry(2)) == 1 ) THEN
       ExternInitData%LidRadialVel = .true.
    ELSE
@@ -161,7 +190,8 @@ subroutine FAST_Start(iTurb, NumInputs_c, NumOutputs_c, InputAry, OutputAry, Err
 #ifdef SIMULINK_DirectFeedThrough   
    IF(  NumInputs_c /= NumFixedInputs .AND. NumInputs_c /= NumFixedInputs+3 ) THEN
       ErrStat_c = ErrID_Fatal
-      ErrMsg_c  = TRANSFER( "FAST_Start:size of InputAry is invalid."//C_NULL_CHAR, ErrMsg_c )
+      ErrMsg  = "FAST_Start:size of InputAry is invalid."//C_NULL_CHAR
+      ErrMsg_c  = TRANSFER( ErrMsg//C_NULL_CHAR, ErrMsg_c )
       RETURN
    END IF
 
@@ -474,13 +504,19 @@ subroutine FAST_OpFM_Init(iTurb, TMax, InputFileName_c, TurbID, NumSC2Ctrl, NumC
    ExternInitData%NumActForcePtsTower = NumActForcePtsTower
 
    CALL FAST_InitializeAll_T( t_initial, 1_IntKi, Turbine(iTurb), ErrStat, ErrMsg, InputFileName, ExternInitData )
-   
+
       ! set values for return to OpenFOAM
    AbortErrLev_c = AbortErrLev   
    dt_c          = Turbine(iTurb)%p_FAST%dt
    ErrStat_c     = ErrStat
    ErrMsg        = TRIM(ErrMsg)//C_NULL_CHAR
    ErrMsg_c      = TRANSFER( ErrMsg//C_NULL_CHAR, ErrMsg_c )
+
+   IF ( ErrStat >= AbortErrLev ) THEN
+      CALL WrScr( "Error in FAST_OpFM_Init:FAST_InitializeAll_T" // TRIM(ErrMsg) )
+      IF (ALLOCATED(Turbine)) DEALLOCATE(Turbine)
+      RETURN
+   END IF
    
    call SetOpenFOAM_pointers(iTurb, OpFM_Input_from_FAST, OpFM_Output_to_FAST, SC_Input_from_FAST, SC_Output_to_FAST)
                         
@@ -605,6 +641,9 @@ subroutine SetOpenFOAM_pointers(iTurb, OpFM_Input_from_FAST, OpFM_Output_to_FAST
    OpFM_Input_from_FAST%pxForce_Len = Turbine(iTurb)%OpFM%u%c_obj%pxForce_Len; OpFM_Input_from_FAST%pxForce = Turbine(iTurb)%OpFM%u%c_obj%pxForce
    OpFM_Input_from_FAST%pyForce_Len = Turbine(iTurb)%OpFM%u%c_obj%pyForce_Len; OpFM_Input_from_FAST%pyForce = Turbine(iTurb)%OpFM%u%c_obj%pyForce
    OpFM_Input_from_FAST%pzForce_Len = Turbine(iTurb)%OpFM%u%c_obj%pzForce_Len; OpFM_Input_from_FAST%pzForce = Turbine(iTurb)%OpFM%u%c_obj%pzForce
+   OpFM_Input_from_FAST%xdotForce_Len = Turbine(iTurb)%OpFM%u%c_obj%xdotForce_Len; OpFM_Input_from_FAST%xdotForce = Turbine(iTurb)%OpFM%u%c_obj%xdotForce
+   OpFM_Input_from_FAST%ydotForce_Len = Turbine(iTurb)%OpFM%u%c_obj%ydotForce_Len; OpFM_Input_from_FAST%ydotForce = Turbine(iTurb)%OpFM%u%c_obj%ydotForce
+   OpFM_Input_from_FAST%zdotForce_Len = Turbine(iTurb)%OpFM%u%c_obj%zdotForce_Len; OpFM_Input_from_FAST%zdotForce = Turbine(iTurb)%OpFM%u%c_obj%zdotForce
    OpFM_Input_from_FAST%pOrientation_Len = Turbine(iTurb)%OpFM%u%c_obj%pOrientation_Len; OpFM_Input_from_FAST%pOrientation = Turbine(iTurb)%OpFM%u%c_obj%pOrientation
    OpFM_Input_from_FAST%fx_Len = Turbine(iTurb)%OpFM%u%c_obj%fx_Len; OpFM_Input_from_FAST%fx = Turbine(iTurb)%OpFM%u%c_obj%fx
    OpFM_Input_from_FAST%fy_Len = Turbine(iTurb)%OpFM%u%c_obj%fy_Len; OpFM_Input_from_FAST%fy = Turbine(iTurb)%OpFM%u%c_obj%fy

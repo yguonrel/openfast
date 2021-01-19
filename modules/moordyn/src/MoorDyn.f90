@@ -58,7 +58,7 @@ CONTAINS
       CHARACTER(*),                 INTENT(  OUT)  :: ErrMsg      ! Error message if ErrStat /= ErrID_None
 
       ! local variables
-      REAL(ReKi)                                   :: t              ! instantaneous time, to be used during IC generation
+      REAL(DbKi)                                   :: t              ! instantaneous time, to be used during IC generation
       INTEGER(IntKi)                               :: I              ! index
       INTEGER(IntKi)                               :: J              ! index
       INTEGER(IntKi)                               :: K              ! index
@@ -126,6 +126,7 @@ CONTAINS
 
       ! cycle through Connects and identify Connect types
       DO I = 1, p%NConnects
+               
          TempString = m%ConnectList(I)%type
          CALL Conv2UC(TempString)
          if (TempString == 'FIXED') then
@@ -328,11 +329,30 @@ CONTAINS
 
 
       ! --------------------------------------------------------------------
+      ! size active tensioning inputs arrays based on highest channel number read from input file for now <<<<<<<
+      ! --------------------------------------------------------------------
+      
+      ! find the highest channel number
+      N = 0
+      DO I = 1, p%NLines
+         IF ( m%LineList(I)%CtrlChan > N ) then
+            N = m%LineList(I)%CtrlChan       
+         END IF
+      END DO   
+      
+      ! allocate the input arrays
+      ALLOCATE ( u%DeltaL(N), u%DeltaLdot(N), STAT = ErrStat2 )
+      
+
+      ! --------------------------------------------------------------------
       ! go through lines and initialize internal node positions using Catenary()
       ! --------------------------------------------------------------------
       DO I = 1, p%NLines
 
          N = m%LineList(I)%N ! for convenience
+         
+         !TODO: apply any initial adjustment of line length from active tensioning <<<<<<<<<<<<
+         ! >>> maybe this should be skipped <<<<
 
          ! set end node positions and velocities from connect objects
          m%LineList(I)%r(:,N) = m%ConnectList(m%LineList(I)%FairConnect)%r
@@ -391,7 +411,7 @@ CONTAINS
          END DO
       END DO
 
-      t = 0.0_ReKi     ! start time at zero
+      t = 0.0_DbKi     ! start time at zero
 
       ! because TimeStep wants an array...
       call MD_CopyInput( u, uArray(1), MESH_NEWCOPY, ErrStat2, ErrMsg2 )
@@ -466,7 +486,7 @@ CONTAINS
          CHARACTER(*),   INTENT(IN) :: Msg         ! The error message (ErrMsg)
 
          INTEGER(IntKi)             :: ErrStat3    ! The error identifier (ErrStat)
-         CHARACTER(1024)            :: ErrMsg3     ! The error message (ErrMsg)
+         CHARACTER(ErrMsgLen)       :: ErrMsg3     ! The error message (ErrMsg)
 
          ! Set error status/message;
          IF ( ErrID /= ErrID_None ) THEN
@@ -518,12 +538,12 @@ CONTAINS
 ! moved to TimeStep      TYPE(MD_InputType)                              :: u_interp   !
       INTEGER(IntKi)                                  :: nTime
 
-      REAL(ReKi)                                      :: t2         ! should work out a consistent data type for time...
+      REAL(DbKi)                                      :: t2         ! copy of time passed to TimeStep
 
 
       nTime = size(u) ! the number of times of input data provided?
 
-      t2 = real(t, ReKi)
+      t2 = t
 
 ! >>> removing this section and putting it inside loop of TimeStep (to be done at every time step) <<<
 !      ! create space for arrays/meshes in u_interp
@@ -604,15 +624,12 @@ CONTAINS
       TYPE(MD_ContinuousStateType)                   :: dxdt    ! time derivatives of continuous states (initialized in CalcContStateDeriv)
       INTEGER(IntKi)                                 :: I       ! counter
       INTEGER(IntKi)                                 :: J       ! counter
-      REAL(ReKi)                                     :: t2      ! real version of t (double)
 
       INTEGER(IntKi)                                 :: ErrStat2   ! Error status of the operation
       CHARACTER(ErrMsgLen)                           :: ErrMsg2    ! Error message if ErrStat2 /= ErrID_None
 
 
       ! below updated to make sure outputs are current (based on provided x and u)  - similar to what's in UpdateStates
-
-      t2 = real(t, ReKi)
 
       ! go through fairleads and apply motions from driver
       DO I = 1, p%NFairs
@@ -623,7 +640,7 @@ CONTAINS
       END DO
 
       ! call CalcContStateDeriv in order to run model and calculate dynamics with provided x and u
-      CALL MD_CalcContStateDeriv( t2, u, p, x, xd, z, other, m, dxdt, ErrStat, ErrMsg )
+      CALL MD_CalcContStateDeriv( t, u, p, x, xd, z, other, m, dxdt, ErrStat, ErrMsg )
 
 
       ! assign net force on fairlead Connects to the output mesh
@@ -635,7 +652,7 @@ CONTAINS
 
 
       ! calculate outputs (y%WriteOutput) for glue code and write any m outputs to MoorDyn output files
-      CALL MDIO_WriteOutputs(REAL(t,DbKi) , p, m, y, ErrStat2, ErrMsg2)
+      CALL MDIO_WriteOutputs(t, p, m, y, ErrStat2, ErrMsg2)
       CALL CheckError(ErrStat2, 'In MDIO_WriteOutputs: '//trim(ErrMsg2))
       IF ( ErrStat >= AbortErrLev ) RETURN
 
@@ -680,7 +697,7 @@ CONTAINS
    ! Tight coupling routine for computing derivatives of continuous states
    ! this is modelled off what used to be subroutine DoRHSmaster
 
-      REAL(ReKi),                         INTENT(IN )    :: t       ! Current simulation time in seconds
+      REAL(DbKi),                         INTENT(IN )    :: t       ! Current simulation time in seconds
       TYPE(MD_InputType),                 INTENT(IN )    :: u       ! Inputs at t
       TYPE(MD_ParameterType),             INTENT(IN )    :: p       ! Parameters
       TYPE(MD_ContinuousStateType),       INTENT(IN )    :: x       ! Continuous states at t
@@ -732,6 +749,33 @@ CONTAINS
          END DO
       END DO
 
+      ! apply line length changes from active tensioning if applicable
+      DO L = 1, p%NLines
+         IF (m%LineList(L)%CtrlChan > 0) then
+            
+            ! do a bounds check to prohibit excessive segment length changes (until a method to add/remove segments is created)
+            IF ( u%DeltaL(m%LineList(L)%CtrlChan) > m%LineList(L)%UnstrLen / m%LineList(L)%N ) then
+                ErrStat = ErrID_Fatal
+                ErrMsg  = ' Active tension command will make a segment longer than the limit of twice its original length.'
+                print *, u%DeltaL(m%LineList(L)%CtrlChan), " is an increase of more than ", (m%LineList(L)%UnstrLen / m%LineList(L)%N)
+                print *, u%DeltaL
+                print*, m%LineList(L)%CtrlChan
+                RETURN
+            END IF
+            IF ( u%DeltaL(m%LineList(L)%CtrlChan) < -0.5 * m%LineList(L)%UnstrLen / m%LineList(L)%N ) then
+             ErrStat = ErrID_Fatal
+                ErrMsg  = ' Active tension command will make a segment shorter than the limit of half its original length.'
+                print *, u%DeltaL(m%LineList(L)%CtrlChan), " is a reduction of more than half of ", (m%LineList(L)%UnstrLen / m%LineList(L)%N)
+                print *, u%DeltaL
+                print*, m%LineList(L)%CtrlChan
+                RETURN
+            END IF                
+            
+            ! for now this approach only acts on the fairlead end segment, and assumes all segment lengths are otherwise equal size
+            m%LineList(L)%l( m%LineList(L)%N) = m%LineList(L)%UnstrLen/m%LineList(L)%N + u%DeltaL(m%LineList(L)%CtrlChan)       
+            m%LineList(L)%ld(m%LineList(L)%N) =                                       u%DeltaLdot(m%LineList(L)%CtrlChan)       
+         END IF
+      END DO      
 
       ! do Line force and acceleration calculations, also add end masses/forces to respective Connects
       DO L = 1, p%NLines
@@ -774,7 +818,7 @@ CONTAINS
 
          Real(ReKi), INTENT( IN )      :: X(:)           ! state vector, provided
          Real(ReKi), INTENT( INOUT )   :: Xd(:)          ! derivative of state vector, returned ! cahnged to INOUT
-         Real(ReKi), INTENT (IN)       :: t              ! instantaneous time
+         Real(DbKi), INTENT (IN)       :: t              ! instantaneous time
          TYPE(MD_Line), INTENT (INOUT) :: Line           ! label for the current line, for convenience
          TYPE(MD_LineProp), INTENT(IN) :: LineProp       ! the single line property set for the line of interest
          Real(ReKi), INTENT(INOUT)     :: FairFtot(:)    ! total force on Connect top of line is attached to
@@ -835,7 +879,7 @@ CONTAINS
             DO J = 1, 3
                Sum1 = Sum1 + (Line%r(J,I) - Line%r(J,I-1))*(Line%rd(J,I) - Line%rd(J,I-1))
             END DO
-            Line%lstrd(I) = Sum1/Line%lstr(I)                          ! strain rate of segment
+            Line%lstrd(I) = Sum1/Line%lstr(I)                          ! segment stretched length rate of change
 
     !       Line%V(I) = Pi/4.0 * d*d*Line%l(I)                        !volume attributed to segment
          END DO
@@ -883,7 +927,7 @@ CONTAINS
          ! loop through the segments
          DO I = 1, N
 
-            ! line tension
+            ! line tension, inherently including possibility of dynamic length changes in l term
             IF (Line%lstr(I)/Line%l(I) > 1.0) THEN
                DO J = 1, 3
                   Line%T(J,I) = LineProp%EA *( 1.0/Line%l(I) - 1.0/Line%lstr(I) ) * (Line%r(J,I)-Line%r(J,I-1))
@@ -894,9 +938,9 @@ CONTAINS
                END DO
             END if
 
-            ! line internal damping force  (this now uses a line-specific BA value (Line%BA vs. LineProp%BA), to support calculation of individual line BAs based on desired damping ratio)
+            ! line internal damping force based on line-specific BA value, including possibility of dynamic length changes in l and ld terms
             DO J = 1, 3
-               Line%Td(J,I) = Line%BA* ( Line%lstrd(I) / Line%l(I) ) * (Line%r(J,I)-Line%r(J,I-1)) / Line%lstr(I)  ! note new form of damping coefficient, BA rather than Cint
+               Line%Td(J,I) = Line%BA* ( Line%lstrd(I) -  Line%lstr(I)*Line%ld(I)/Line%l(I) )/Line%l(I)  * (Line%r(J,I)-Line%r(J,I-1)) / Line%lstr(I)
             END DO
          END DO
 
@@ -1025,7 +1069,7 @@ CONTAINS
       
          Real(ReKi),       INTENT( IN )    :: X(:)           ! state vector for this connect, provided
          Real(ReKi),       INTENT( OUT )   :: Xd(:)          ! derivative of state vector for this connect, returned
-         Real(ReKi),       INTENT (IN)     :: t              ! instantaneous time
+         Real(DbKi),       INTENT (IN)     :: t              ! instantaneous time
          Type(MD_Connect), INTENT (INOUT)  :: Connect        ! Connect number
 
 
@@ -1040,7 +1084,7 @@ CONTAINS
          ! itself, which will be added below.
 
 
-         IF (EqualRealNos(t, 0.0_ReKi)) THEN  ! this is old: with current IC gen approach, we skip the first call to the line objects, because they're set AFTER the call to the connects
+         IF (EqualRealNos(t, 0.0_DbKi)) THEN  ! this is old: with current IC gen approach, we skip the first call to the line objects, because they're set AFTER the call to the connects
 
             DO J = 1,3
                Xd(3+J) = X(J)        ! velocities - these are unused in integration
@@ -1179,7 +1223,7 @@ CONTAINS
 
    !========================================================================================================
    SUBROUTINE TimeStep ( t, dtStep, u, utimes, p, x, xd, z, other, m, ErrStat, ErrMsg )
-      REAL(ReKi)                     , INTENT(INOUT)      :: t
+      REAL(DbKi)                     , INTENT(INOUT)      :: t
       REAL(ReKi)                     , INTENT(IN   )      :: dtStep     ! how long to advance the time for
       TYPE( MD_InputType )           , INTENT(INOUT)      :: u(:)       ! INTENT(IN   )
       REAL(DbKi)                     , INTENT(IN   )      :: utimes(:)  ! times corresponding to elements of u(:)?
@@ -1196,7 +1240,7 @@ CONTAINS
       TYPE(MD_ContinuousStateType)                        :: dxdt       ! time derivatives of continuous states (initialized in CalcContStateDeriv)
       TYPE(MD_ContinuousStateType)                        :: x2         ! temporary copy of continuous states used in RK2 calculations
       INTEGER(IntKi)                                      :: NdtM       ! the number of time steps to make with the mooring model
-      Real(ReKi)                                          :: dtM        ! the actual time step size to use
+      Real(DbKi)                                          :: dtM        ! the actual time step size to use
       INTEGER(IntKi)                                      :: Nx         ! size of states vector
       INTEGER(IntKi)                                      :: I          ! counter
       INTEGER(IntKi)                                      :: J          ! counter
@@ -1224,7 +1268,7 @@ CONTAINS
       DO I = 1, NdtM                                 ! for (double ts=t; ts<=t+ICdt-dts; ts+=dts)
       
       
-         tDbKi = t        ! get DbKi version of current time (why does ExtrapInterp except different time type than UpdateStates?)
+         !tDbKi = t        ! get DbKi version of current time (why does ExtrapInterp except different time type than UpdateStates?)
          
       
          ! -------------------------------------------------------------------------------
@@ -1233,7 +1277,7 @@ CONTAINS
 
          ! step 1
 
-         CALL MD_Input_ExtrapInterp(u, utimes, u_interp, tDbKi          , ErrStat, ErrMsg)   ! interpolate input mesh to correct time (t)
+         CALL MD_Input_ExtrapInterp(u, utimes, u_interp, t          , ErrStat, ErrMsg)   ! interpolate input mesh to correct time (t)
       
          CALL MD_CalcContStateDeriv( t, u_interp, p, x, xd, z, other, m, dxdt, ErrStat, ErrMsg )
          DO J = 1, Nx
@@ -1242,7 +1286,7 @@ CONTAINS
 
          ! step 2
    
-         CALL MD_Input_ExtrapInterp(u, utimes, u_interp, tDbKi + 0.5_ReKi*dtM, ErrStat, ErrMsg)   ! interpolate input mesh to correct time (t+0.5*dtM)
+         CALL MD_Input_ExtrapInterp(u, utimes, u_interp, t + 0.5_DbKi*dtM, ErrStat, ErrMsg)   ! interpolate input mesh to correct time (t+0.5*dtM)
             
          CALL MD_CalcContStateDeriv( (t + 0.5_ReKi*dtM), u_interp, p, x2, xd, z, other, m, dxdt, ErrStat, ErrMsg )       !called with updated states x2 and time = t + dt/2.0
          DO J = 1, Nx
@@ -1250,6 +1294,8 @@ CONTAINS
          END DO
 
          t = t + dtM  ! update time
+         
+         !print *, " In TimeStep t=", t, ",  L1N8Pz=", M%LineList(1)%r(3,8), ", dL1=", u_interp%DeltaL(1)
 
          !----------------------------------------------------------------------------------
 
@@ -1291,7 +1337,7 @@ CONTAINS
 
    !=======================================================================
    SUBROUTINE SetupLine (Line, LineProp, rhoW, ErrStat, ErrMsg)
-      ! calculate initial profile of the line using quasi-static model
+      ! allocate arrays in line object
 
       TYPE(MD_Line), INTENT(INOUT)       :: Line          ! the single line object of interest
       TYPE(MD_LineProp), INTENT(INOUT)   :: LineProp      ! the single line property set for the line of interest
@@ -1322,7 +1368,7 @@ CONTAINS
       END IF
 
       ! allocate segment scalar quantities
-      ALLOCATE ( Line%l(N), Line%lstr(N), Line%lstrd(N), Line%V(N), STAT = ErrStat )
+      ALLOCATE ( Line%l(N), Line%ld(N), Line%lstr(N), Line%lstrd(N), Line%V(N), STAT = ErrStat )
       IF ( ErrStat /= ErrID_None ) THEN
          ErrMsg  = ' Error allocating segment scalar quantity arrays.'
          !CALL CleanUp()
@@ -1332,6 +1378,7 @@ CONTAINS
       ! assign values for l and V
       DO J=1,N
          Line%l(J) = Line%UnstrLen/REAL(N, DbKi)
+         Line%ld(J)= 0.0_DbKi
          Line%V(J) = Line%l(J)*0.25*Pi*LineProp%d*LineProp%d
       END DO
 
